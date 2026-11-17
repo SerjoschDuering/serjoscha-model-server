@@ -48,6 +48,7 @@ def analyse(image: Image.Image):
     rebuilt = session.run(None, {INPUT_NAME: x})[0]
     error_map = ((rebuilt - x) ** 2)[0, 0]
     score = float(error_map.mean())
+    print("hey!", score, ">", THRESHOLD, "?", score > THRESHOLD)
     return {
         "score": round(score, 5),
         "threshold": round(THRESHOLD, 5),
