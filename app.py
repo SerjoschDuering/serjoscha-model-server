@@ -10,6 +10,7 @@ AND the weights, so this file needs no PyTorch and no copy of the model class.
 import base64
 import io
 import json
+import logging
 import os
 from pathlib import Path
 
@@ -22,6 +23,12 @@ HERE = Path(__file__).parent
 CONFIG = json.loads((HERE / "anomaly_ae_config.json").read_text())
 SIZE = CONFIG["image_size"]
 THRESHOLD = CONFIG["threshold"]
+
+# Render shows everything the app writes to stdout/stderr in its Logs tab
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+log = logging.getLogger("model-server")
+for noisy in ("httpx", "httpx2"):               # Gradio's own HTTP calls (telemetry, version check)
+    logging.getLogger(noisy).setLevel(logging.WARNING)
 
 session = ort.InferenceSession(HERE / "anomaly_ae.onnx")
 INPUT_NAME = session.get_inputs()[0].name
@@ -48,7 +55,11 @@ def analyse(image: Image.Image):
     rebuilt = session.run(None, {INPUT_NAME: x})[0]
     error_map = ((rebuilt - x) ** 2)[0, 0]
     score = float(error_map.mean())
-    print("hey!", score, ">", THRESHOLD, "?", score > THRESHOLD)
+    if score > THRESHOLD:
+        # Not a real failure: ERROR level only makes the alarm easy to find and filter in the logs
+        log.error("ALARM: anomaly detected, score %.5f > threshold %.5f (x%.2f)", score, THRESHOLD, score / THRESHOLD)
+    else:
+        log.info("normal image, score %.5f <= threshold %.5f", score, THRESHOLD)
     return {
         "score": round(score, 5),
         "threshold": round(THRESHOLD, 5),
@@ -61,7 +72,9 @@ def analyse(image: Image.Image):
 # ---- For people: the web form ------------------------------------------------
 def analyse_for_page(image):
     if image is None:
+        log.warning("page: Analyse clicked with no image")
         raise gr.Error("Upload an image first.")
+    log.info("page: analysing an image of %dx%d", *image.size)
     result, rebuilt, error_map = analyse(image)
     verdict = "Anomaly" if result["is_anomaly"] else "Normal"
     return {verdict: 1.0}, result, to_image(rebuilt), to_image(error_map / max(error_map.max(), 1e-8))
@@ -72,7 +85,12 @@ def predict(image_b64: str) -> dict:
     """Score one image. Send a base64-encoded PNG or JPEG (a 'data:image/...;base64,' prefix is allowed)."""
     if "," in image_b64[:100]:
         image_b64 = image_b64.split(",", 1)[1]
-    image = Image.open(io.BytesIO(base64.b64decode(image_b64)))
+    try:
+        image = Image.open(io.BytesIO(base64.b64decode(image_b64)))
+    except Exception:
+        log.exception("api: could not decode the image (%d base64 characters)", len(image_b64))
+        raise
+    log.info("api: analysing an image of %dx%d", *image.size)
     result, rebuilt, _ = analyse(image)
     buffer = io.BytesIO()
     to_image(rebuilt, scale=4).save(buffer, format="PNG")
