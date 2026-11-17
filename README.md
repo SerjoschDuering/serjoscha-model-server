@@ -110,7 +110,34 @@ The page footer → **Use via API** lists every endpoint with examples.
 
 ---
 
-## 6 · Notes on this approach
+## 6 · See the logs
+
+`app.py` writes a log line for each request. An anomaly is logged at **ERROR** level. It is not a real failure: the ERROR level only makes the alarm easy to find.
+
+```python
+import logging
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+log = logging.getLogger("model-server")
+
+log.info("normal image, score %.5f", score)          # each request
+log.error("ALARM: anomaly detected, score %.5f", score)  # alarm: easy to filter
+log.exception("could not decode the image")           # real error: adds the traceback
+```
+
+**Where you see them:**
+
+| Where | How |
+|---|---|
+| Your computer | the terminal where `python app.py` runs |
+| Render | service page → **Logs**. Type `ALARM` or `ERROR` in the search box to filter. |
+
+- Use `logging`, not `print`. `print` output can come late or not at all, because Python buffers it. `logging` writes to stderr at once, and each line has a time and a level.
+- `basicConfig(level=logging.INFO)` is necessary. Without it, Python shows only WARNING and higher, and your INFO lines are lost.
+- The log is for **you**, not for the user of the page. To show a message **on the Gradio page**, use a pop-up: `gr.Info("…")`, `gr.Warning("…")`, or `raise gr.Error("…")` (this stops the function).
+
+---
+
+## 7 · Notes on this approach
 
 - **Free plan:** the server **sleeps after 15 minutes** without requests. The next request wakes it in **about a minute**: slow, not broken. Open it before a demo.
 - **No disk:** files the app writes are lost on restart. Results that must survive go to a database (Wednesday: Cloudflare D1).
@@ -120,7 +147,7 @@ The page footer → **Use via API** lists every endpoint with examples.
 - **Every push to `main` redeploys** automatically.
 - **Why Gradio:** one function → a page for people + an API for programs, in one file. For an API only, FastAPI is the usual alternative.
 
-## 7 · Optional: MCP for AI agents
+## 8 · Optional: MCP for AI agents
 
 1. In `requirements.txt` write `gradio[mcp]==6.32.0` instead of `gradio==6.32.0`.
 2. In `app.py` add `mcp_server=True` to `demo.launch(...)`.
