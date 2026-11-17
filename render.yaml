@@ -1,7 +1,7 @@
 # Render Blueprint: Render reads this file and creates the web service.
 services:
   - type: web
-    name: iaac-team0-model-server   # becomes https://iaac-team0-model-server.onrender.com (change per team)
+    name: serjoscha-model-server   # becomes https://serjoscha-model-server.onrender.com (your own name)
     runtime: python
     plan: free
     region: frankfurt               # servers in Europe; cannot be changed later
